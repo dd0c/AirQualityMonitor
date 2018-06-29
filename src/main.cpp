@@ -8,6 +8,7 @@
 #include <EasyNTPClient.h>
 #include <dht.h>
 #include <Timezone.h>
+#include<string.h>
 
 // SSID of your network
 char ssid[] = ""; //SSID of your Wi-Fi router
@@ -23,7 +24,7 @@ unsigned long utc, localTime;
 
 // DHT22 humidity and temperature sensor
 dht DHT;
-#define DHT22_PIN D0
+#define DHT22_PIN D4
 
 struct
 {
@@ -36,6 +37,18 @@ struct
     uint32_t ack_h;
     uint32_t unknown;
 } stat = { 0,0,0,0,0,0,0,0};
+
+// DSM501A smog sensor
+byte buff[2];
+int pin = D8;
+unsigned long duration;
+unsigned long starttime;
+unsigned long endtime;
+unsigned long sampletime_ms = 30000;
+unsigned long lowpulseoccupancy = 0;
+float ratio = 0;
+float concentration = 0;
+int i=0;
 
 void setup() {
     // put your setup code here, to run once:
@@ -64,6 +77,10 @@ void setup() {
     Serial.println(DHT_LIB_VERSION);
     Serial.println();
     Serial.println("Type,\tstatus,\tHumidity (%),\tTemperature (C)");
+
+    // Start DSM501A sensor
+    pinMode(8,INPUT);
+    starttime = millis();
 }
 
 void loop() {
@@ -100,7 +117,7 @@ void loop() {
       break;
     }
 
-    // DISPLAY DATA
+    // DISPLAY DATA DHT22
     Serial.print("Humidity:\t");
     Serial.print(DHT.humidity, 1);
     Serial.println();
@@ -126,6 +143,23 @@ void loop() {
       Serial.print("\t");
       Serial.print(stat.unknown);
       Serial.println("\n");
+    }
+
+    // Display data DSM501A
+    duration = pulseIn(pin, LOW);
+    lowpulseoccupancy += duration;
+    endtime = millis();
+    if ((endtime-starttime) > sampletime_ms) {
+      ratio = (lowpulseoccupancy-endtime+starttime + sampletime_ms)/(sampletime_ms*10.0);  // Integer percentage 0=>100
+      concentration = 1.1*pow(ratio,3)-3.8*pow(ratio,2)+520*ratio+0.62; // using spec sheet curve
+      Serial.print("lowpulseoccupancy:");
+      Serial.print(lowpulseoccupancy);
+      Serial.print("    ratio:");
+      Serial.print(ratio);
+      Serial.print("    DSM501A:");
+      Serial.println(concentration);
+      lowpulseoccupancy = 0;
+      starttime = millis();
     }
 
     delay(5000); // wait for 5 seconds before refreshing.
