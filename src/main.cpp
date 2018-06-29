@@ -2,12 +2,13 @@
 // Libraries needed:
 // EasyNTPClient, Timezone, Time, MHZ19_uart
 
+#include <Arduino.h>
 #include <WiFiUdp.h>
 #include <ESP8266WiFi.h>
 #include <EasyNTPClient.h>
+#include <dht.h>
 #include <Timezone.h>
-#include <MHZ19_uart.h>
-/*
+
 // SSID of your network
 char ssid[] = ""; //SSID of your Wi-Fi router
 char pass[] = ""; //Password of your Wi-Fi router
@@ -19,21 +20,29 @@ TimeChangeRule CEST = {"CEST", Last, Sun, Mar, 2, 120};     //Central European S
 TimeChangeRule CET = {"CET ", Last, Sun, Oct, 3, 60};       //Central European Standard Time
 Timezone CE(CEST, CET);
 unsigned long utc, localTime;
-*/
-// MH-Z19 CO2 sensor
-const int rx_pin = D2;  //Serial rx pin no
-const int tx_pin = D1;  //Serial tx pin no
-const int waitingMinutes = 30;  //waiting 30 minutes
-MHZ19_uart mhz19;
-long cnt = 0;
-const long waitingSeconds = waitingMinutes * 60L;
+
+// DHT22 humidity and temperature sensor
+dht DHT;
+#define DHT22_PIN D0
+
+struct
+{
+    uint32_t total;
+    uint32_t ok;
+    uint32_t crc_error;
+    uint32_t time_out;
+    uint32_t connect;
+    uint32_t ack_l;
+    uint32_t ack_h;
+    uint32_t unknown;
+} stat = { 0,0,0,0,0,0,0,0};
 
 void setup() {
     // put your setup code here, to run once:
     Serial.begin(115200);
     delay(10);
     Serial.println("\r\n");
-/*
+
     // Connect to Wi-Fi network
     Serial.println();
     Serial.println();
@@ -48,49 +57,76 @@ void setup() {
     }
     Serial.println("");
     Serial.println("Wi-Fi connected successfully");
-*/
-    // MH-Z19 CO2 sensor setup
-    mhz19.begin(rx_pin, tx_pin);
-    mhz19.setAutoCalibration(false);
-    while ( mhz19.isWarming() ) {
-      Serial.print("MH-Z19 now warming up...  status:"); Serial.println(mhz19.getStatus());
-      delay(1000);
-    }
     Serial.println();
+
+    // Start DHT22 sensor output
+    Serial.print("LIBRARY VERSION: ");
+    Serial.println(DHT_LIB_VERSION);
+    Serial.println();
+    Serial.println("Type,\tstatus,\tHumidity (%),\tTemperature (C)");
 }
 
 void loop() {
     // put your main code here, to run repeatedly:
-    /*
     utc = ntpClient.getUnixTime();
     localTime = CE.toLocal(utc);
     Serial.print("Epoch CET time: ");
     Serial.println(localTime);
-*/
-    // MH-Z19 CO2 sensor loop
-    if ( ++cnt % 60 == 0) {
-      Serial.print(cnt / 60); Serial.println("min.");
-      Serial.print("co2: "); Serial.print(mhz19.getPPM()); Serial.println("ppm now.");
-    } else {
-      Serial.print(".");
+
+    // READ DATA DHT22 sensor
+    Serial.print("DHT22 sensor:\t");
+
+    uint32_t start = micros();
+    int chk = DHT.read22(DHT22_PIN);
+    uint32_t stop = micros();
+
+    stat.total++;
+    switch (chk) {
+      case DHTLIB_OK:
+        stat.ok++;
+        Serial.println("OK\t");
+      break;
+      case DHTLIB_ERROR_CHECKSUM:
+        stat.crc_error++;
+        Serial.println("Checksum error\t");
+      break;
+      case DHTLIB_ERROR_TIMEOUT:
+        stat.time_out++;
+        Serial.println("Time out error\t");
+      break;
+      default:
+        stat.unknown++;
+        Serial.println("Unknown error\t");
+      break;
     }
-    delay(1000);
 
-    if (cnt > waitingSeconds) {
-      Serial.println("");
-      mhz19.calibrateZero();
-      Serial.println("1st zero calibration now .");
+    // DISPLAY DATA
+    Serial.print("Humidity:\t");
+    Serial.print(DHT.humidity, 1);
+    Serial.println();
+    Serial.print("Temperature:\t");
+    Serial.print(DHT.temperature, 1);
+    Serial.println();
 
-      delay(60000);
-      mhz19.calibrateZero();  // Just in case
-      Serial.println("2nd zero calibration now .");
-
-      for ( int i = 0; i < 10; i++) {
-        Serial.print("co2: "); Serial.print(mhz19.getPPM()); Serial.println("ppm now.");
-        delay(10000);
-      }
-      cnt = 0;
-      return;
+    if (stat.total % 20 == 0) {
+      Serial.println("\nTOT\tOK\tCRC\tTO\tUNK");
+      Serial.print(stat.total);
+      Serial.print("\t");
+      Serial.print(stat.ok);
+      Serial.print("\t");
+      Serial.print(stat.crc_error);
+      Serial.print("\t");
+      Serial.print(stat.time_out);
+      Serial.print("\t");
+      Serial.print(stat.connect);
+      Serial.print("\t");
+      Serial.print(stat.ack_l);
+      Serial.print("\t");
+      Serial.print(stat.ack_h);
+      Serial.print("\t");
+      Serial.print(stat.unknown);
+      Serial.println("\n");
     }
+
     delay(5000); // wait for 5 seconds before refreshing.
 }
