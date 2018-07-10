@@ -79,7 +79,7 @@ void setup() {
     Serial.println("Type,\tstatus,\tHumidity (%),\tTemperature (C)");
 
     // Start DSM501A sensor
-    pinMode(8,INPUT);
+    pinMode(D8,INPUT);
     starttime = millis();
 }
 
